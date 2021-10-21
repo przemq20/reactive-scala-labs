@@ -1,12 +1,12 @@
 package EShop.lab2
 
+import EShop.lab3.OrderManager
 import akka.actor.Cancellable
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, Behavior}
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import EShop.lab3.OrderManager
 
 object TypedCartActor {
 
@@ -40,6 +40,9 @@ class TypedCartActor {
         msg match {
           case AddItem(item) =>
             nonEmpty(Cart(Seq(item)), scheduleTimer(context))
+          case GetItems(sender) =>
+            sender ! Cart.empty
+            Behaviors.same
           case _ => Behaviors.same
 
       }
@@ -55,9 +58,15 @@ class TypedCartActor {
             empty
           case AddItem(item) =>
             nonEmpty(cart.addItem(item), scheduleTimer(context))
-          case StartCheckout =>
+          case StartCheckout(orderManagerRef) =>
             timer.cancel()
+            val checkoutActor = context.spawn(new TypedCheckout(context.self).start, "CheckoutActor")
+            checkoutActor ! TypedCheckout.StartCheckout
+            orderManagerRef ! OrderManager.ConfirmCheckoutStarted(checkoutActor)
             inCheckout(cart)
+          case GetItems(sender) =>
+            sender ! cart
+            Behaviors.same
           case ExpireCart =>
             empty
           case _ => Behaviors.same
@@ -71,7 +80,10 @@ class TypedCartActor {
         msg match {
           case ConfirmCheckoutCancelled => nonEmpty(cart, scheduleTimer(context))
           case ConfirmCheckoutClosed    => empty
-          case _                        => Behaviors.same
+          case GetItems(sender) =>
+            sender ! cart
+            Behaviors.same
+          case _ => Behaviors.same
       }
     )
 }
