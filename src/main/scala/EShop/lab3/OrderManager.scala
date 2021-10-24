@@ -1,7 +1,7 @@
 package EShop.lab3
 
 import EShop.lab2.{TypedCartActor, TypedCheckout}
-import akka.actor.typed.scaladsl.Behaviors
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, Behavior}
 
 object OrderManager {
@@ -15,14 +15,29 @@ object OrderManager {
   case class ConfirmCheckoutStarted(checkoutRef: ActorRef[TypedCheckout.Command])                     extends Command
   case class ConfirmPaymentStarted(paymentRef: ActorRef[Payment.Command])                             extends Command
   case object ConfirmPaymentReceived                                                                  extends Command
+  case object ConfirmCheckOutClosed                                                                   extends Command
 
   sealed trait Ack
   case object Done extends Ack //trivial ACK
+
+  def apply(): Behavior[OrderManager.Command] = Behaviors.setup { context =>
+    new OrderManager(context).start
+  }
 }
 
-class OrderManager {
-
+class OrderManager(context: ActorContext[OrderManager.Command]) {
   import OrderManager._
+
+  val typedCartEventMapper: ActorRef[TypedCartActor.Event] = context.messageAdapter {
+    case TypedCartActor.CheckoutStarted(checkoutRef) => ConfirmCheckoutStarted(checkoutRef)
+  }
+
+  val typedCheckoutEventMapper: ActorRef[TypedCheckout.Event] = context.messageAdapter {
+    case TypedCheckout.PaymentStarted(paymentRef) => ConfirmPaymentStarted(paymentRef)
+    case TypedCheckout.CheckOutClosed             => ConfirmCheckOutClosed
+  }
+
+  val paymentEventMapper: ActorRef[Payment.Event] = context.messageAdapter(_ => ConfirmPaymentReceived)
 
   def start: Behavior[OrderManager.Command] = uninitialized
 
@@ -43,7 +58,7 @@ class OrderManager {
             sender ! Done
             Behaviors.same
           case Buy(sender) =>
-            cartActor ! TypedCartActor.StartCheckout(context.self)
+            cartActor ! TypedCartActor.StartCheckout(typedCartEventMapper)
             inCheckout(cartActor, sender)
           case _ => Behaviors.same
       }
@@ -70,7 +85,7 @@ class OrderManager {
         command match {
           case SelectDeliveryAndPaymentMethod(delivery, payment, sender) =>
             checkoutActorRef ! TypedCheckout.SelectDeliveryMethod(delivery)
-            checkoutActorRef ! TypedCheckout.SelectPayment(payment, context.self)
+            checkoutActorRef ! TypedCheckout.SelectPayment(payment, typedCheckoutEventMapper, paymentEventMapper)
             inPayment(sender)
           case _ => Behaviors.same
       }
