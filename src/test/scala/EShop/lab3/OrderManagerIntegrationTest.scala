@@ -9,10 +9,6 @@ import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
 
 import scala.concurrent.duration._
-import akka.pattern.ask
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.flatspec.AnyFlatSpecLike
-import org.scalatest.matchers.should.Matchers
 
 class OrderManagerIntegrationTest
   extends ScalaTestWithActorTestKit
@@ -36,7 +32,7 @@ class OrderManagerIntegrationTest
   }
 
   it should "supervise whole order process" in {
-    val orderManager = testKit.spawn(OrderManager()).ref
+    val orderManager = testKit.spawn(new OrderManager().start).ref
 
     sendMessage(orderManager, AddItem("rollerblades", _))
 
