@@ -3,10 +3,10 @@ package EShop.lab4
 import EShop.lab3.OrderManager
 import akka.actor.testkit.typed.scaladsl.ScalaTestWithActorTestKit
 import akka.persistence.testkit.scaladsl.EventSourcedBehaviorTestKit
+import akka.persistence.testkit.scaladsl.EventSourcedBehaviorTestKit.SerializationSettings
 import akka.persistence.typed.PersistenceId
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
-import akka.persistence.testkit.scaladsl.EventSourcedBehaviorTestKit.SerializationSettings
 
 import scala.concurrent.duration._
 import scala.util.Random
@@ -157,5 +157,93 @@ class PersistentCartActorTest
 
     resultAdd2.hasNoEvents shouldBe true
     resultAdd2.state shouldBe Empty
+  }
+
+  it should "change state after adding first item to the cart after restart" in {
+    val result = eventSourcedTestKit.runCommand(AddItem("Hamlet"))
+
+    result.event.isInstanceOf[ItemAdded] shouldBe true
+    result.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val restartResult = eventSourcedTestKit.restart()
+
+    restartResult.state.isInstanceOf[NonEmpty] shouldBe true
+    restartResult.state.cart.size shouldEqual 1
+  }
+
+  it should "be empty after adding new item and removing it after that after restart" in {
+    val resultAdd = eventSourcedTestKit.runCommand(AddItem("Storm"))
+
+    resultAdd.event.isInstanceOf[ItemAdded] shouldBe true
+    resultAdd.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val resultRemove = eventSourcedTestKit.runCommand(RemoveItem("Storm"))
+
+    resultRemove.event shouldBe CartEmptied
+    resultRemove.state shouldBe Empty
+
+    val restartResult = eventSourcedTestKit.restart()
+
+    restartResult.state shouldBe Empty
+    restartResult.state.cart.size shouldEqual 0
+  }
+
+  it should "contain one item after adding new item and removing not existing one after restart" in {
+    val resultAdd = eventSourcedTestKit.runCommand(AddItem("Romeo & Juliet"))
+
+    resultAdd.event.isInstanceOf[ItemAdded] shouldBe true
+    resultAdd.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val resultRemove = eventSourcedTestKit.runCommand(RemoveItem("Macbeth"))
+
+    resultRemove.hasNoEvents shouldBe true
+    resultRemove.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val restartResult = eventSourcedTestKit.restart()
+
+    restartResult.state.isInstanceOf[NonEmpty] shouldBe true
+    restartResult.state.cart.size shouldEqual 1
+
+  }
+
+  it should "change state to inCheckout from nonEmpty after restart" in {
+    val resultAdd = eventSourcedTestKit.runCommand(AddItem("Romeo & Juliet"))
+
+    resultAdd.event.isInstanceOf[ItemAdded] shouldBe true
+    resultAdd.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val resultStartCheckout =
+      eventSourcedTestKit.runCommand(StartCheckout(testKit.createTestProbe[OrderManager.Command]().ref))
+
+    resultStartCheckout.event.isInstanceOf[CheckoutStarted] shouldBe true
+    resultStartCheckout.state.isInstanceOf[InCheckout] shouldBe true
+
+    val restartResult = eventSourcedTestKit.restart()
+
+    restartResult.state.isInstanceOf[InCheckout] shouldBe true
+  }
+
+  it should "cancel checkout properly after restart" in {
+    val resultAdd = eventSourcedTestKit.runCommand(AddItem("Cymbelin"))
+
+    resultAdd.event.isInstanceOf[ItemAdded] shouldBe true
+    resultAdd.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val resultStartCheckout =
+      eventSourcedTestKit.runCommand(StartCheckout(testKit.createTestProbe[OrderManager.Command]().ref))
+
+    resultStartCheckout.event.isInstanceOf[CheckoutStarted] shouldBe true
+    resultStartCheckout.state.isInstanceOf[InCheckout] shouldBe true
+
+    val restartResult = eventSourcedTestKit.restart()
+
+    restartResult.state.isInstanceOf[InCheckout] shouldBe true
+    restartResult.state.cart.size shouldBe 1
+
+    val resultCancelCheckout =
+      eventSourcedTestKit.runCommand(ConfirmCheckoutCancelled)
+
+    resultCancelCheckout.event shouldBe CheckoutCancelled
+    resultCancelCheckout.state.isInstanceOf[NonEmpty] shouldBe true
   }
 }
