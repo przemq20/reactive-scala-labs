@@ -1,6 +1,7 @@
 package EShop.lab4
 
 import EShop.lab2.TypedCartActor
+import EShop.lab2.TypedCartActor.ConfirmCheckoutClosed
 import EShop.lab3.OrderManager
 import akka.actor.testkit.typed.scaladsl.ScalaTestWithActorTestKit
 import akka.persistence.testkit.scaladsl.EventSourcedBehaviorTestKit
@@ -236,5 +237,38 @@ class PersistentCheckoutTest
 
     resultCancelCheckout.hasNoEvents shouldBe true
     resultCancelCheckout.state shouldBe Closed
+  }
+
+  it should "be recreated after restart" in {
+    val resultStartCheckout = eventSourcedTestKit.runCommand(StartCheckout)
+
+    resultStartCheckout.event shouldBe CheckoutStarted
+    resultStartCheckout.state.isInstanceOf[SelectingDelivery] shouldBe true
+
+    val restartResult = eventSourcedTestKit.restart()
+    restartResult.state.isInstanceOf[SelectingDelivery] shouldBe true
+
+    val resultSelectDelivery = eventSourcedTestKit.runCommand(SelectDeliveryMethod(deliveryMethod))
+
+    resultSelectDelivery.event.isInstanceOf[DeliveryMethodSelected] shouldBe true
+    resultSelectDelivery.state.isInstanceOf[SelectingPaymentMethod] shouldBe true
+
+    val resultSelectPayment = eventSourcedTestKit.runCommand(SelectPayment(paymentMethod, orderManagerProbe.ref))
+
+    resultSelectPayment.event.isInstanceOf[PaymentStarted] shouldBe true
+    resultSelectPayment.state.isInstanceOf[ProcessingPayment] shouldBe true
+    orderManagerProbe.expectMessageType[OrderManager.ConfirmPaymentStarted]
+
+    val restartResult2 = eventSourcedTestKit.restart()
+    restartResult2.state.isInstanceOf[ProcessingPayment] shouldBe true
+
+    val resultReceivePayment = eventSourcedTestKit.runCommand(ConfirmPaymentReceived)
+
+    resultReceivePayment.event shouldBe CheckOutClosed
+    resultReceivePayment.state shouldBe Closed
+    cartActorProbe.expectMessage(TypedCartActor.ConfirmCheckoutClosed)
+
+    val restartResult3 = eventSourcedTestKit.restart()
+    restartResult3.state shouldBe Closed
   }
 }
