@@ -214,10 +214,10 @@ object TypedCheckoutTest {
   val closedMsg                 = "closed"
 
   def checkoutActorWithResponseOnStateChange(
-    testkit: ActorTestKit,
-    probe: ActorRef[String],
-    cartActorProbe: ActorRef[TypedCartActor.Command]
-  ): ActorRef[TypedCheckout.Command] =
+                                              testkit: ActorTestKit,
+                                              probe: ActorRef[String],
+                                              cartActorProbe: ActorRef[TypedCartActor.Command]
+                                            ): ActorRef[TypedCheckout.Command] =
     testkit.spawn {
       val checkout = new TypedCheckout(cartActorProbe) {
 
@@ -260,4 +260,5 @@ object TypedCheckoutTest {
       }
       checkout.start
     }
+
 }
