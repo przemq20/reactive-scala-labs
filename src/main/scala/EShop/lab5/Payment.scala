@@ -27,11 +27,10 @@ object Payment {
     checkout: ActorRef[TypedCheckout.Command]
   ): Behavior[Message] =
     Behaviors
-      .receive[Message](
-        (context, msg) =>
-          msg match {
-            case DoPayment                                       => ???
-            case WrappedPaymentServiceResponse(PaymentSucceeded) => ???
+      .receive[Message]((context, msg) =>
+        msg match {
+          case DoPayment                                       => ???
+          case WrappedPaymentServiceResponse(PaymentSucceeded) => ???
         }
       )
       .receiveSignal {

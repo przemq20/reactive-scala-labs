@@ -21,15 +21,17 @@ object PaymentService {
   def apply(
     method: String,
     payment: ActorRef[Response]
-  ): Behavior[HttpResponse] = Behaviors.setup { context =>
-    ???
-  }
+  ): Behavior[HttpResponse] =
+    Behaviors.setup { context =>
+      ???
+    }
 
   // remember running PymentServiceServer() before trying payu based payments
-  private def getURI(method: String) = method match {
-    case "payu"   => "http://127.0.0.1:8080"
-    case "paypal" => s"http://httpbin.org/status/408"
-    case "visa"   => s"http://httpbin.org/status/200"
-    case _        => s"http://httpbin.org/status/404"
-  }
+  private def getURI(method: String) =
+    method match {
+      case "payu"   => "http://127.0.0.1:8080"
+      case "paypal" => s"http://httpbin.org/status/408"
+      case "visa"   => s"http://httpbin.org/status/200"
+      case _        => s"http://httpbin.org/status/404"
+    }
 }
