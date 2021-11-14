@@ -1,7 +1,7 @@
 package EShop.lab3
 
 import EShop.lab2.TypedCheckout
-import EShop.lab3.Payment.{DoPayment, Event}
+import EShop.lab3.Payment.DoPayment
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior}
 
