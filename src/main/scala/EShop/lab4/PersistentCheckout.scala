@@ -16,7 +16,8 @@ class PersistentCheckout {
 
   val timerDuration: FiniteDuration = 1.seconds
 
-  def schedule(context: ActorContext[Command]): Cancellable = ???
+  def schedule(context: ActorContext[Command], command: Command): Cancellable =
+    context.scheduleOnce(timerDuration, context.self, command)
 
   def apply(cartActor: ActorRef[TypedCartActor.Command], persistenceId: PersistenceId): Behavior[Command] =
     Behaviors.setup { context =>
@@ -31,35 +32,68 @@ class PersistentCheckout {
   def commandHandler(
     context: ActorContext[Command],
     cartActor: ActorRef[TypedCartActor.Command]
-  ): (State, Command) => Effect[Event, State] = (state, command) => {
-    state match {
-      case WaitingForStart =>
-        ???
+  ): (State, Command) => Effect[Event, State] =
+    (state, command) => {
+      state match {
+        case WaitingForStart =>
+          command match {
+            case StartCheckout => Effect.persist(CheckoutStarted)
+            case _             => Effect.none
+          }
 
-      case SelectingDelivery(_) =>
-        ???
+        case SelectingDelivery(_) =>
+          command match {
+            case SelectDeliveryMethod(method)    => Effect.persist(DeliveryMethodSelected(method))
+            case ExpireCheckout | CancelCheckout => Effect.persist(CheckoutCancelled)
+            case _                               => Effect.none
+          }
 
-      case SelectingPaymentMethod(_) =>
-        ???
+        case SelectingPaymentMethod(_) =>
+          command match {
+            case SelectPayment(payment, orderManagerRef) =>
+              val paymentActor =
+                context.spawn(new Payment(payment, orderManagerRef, context.self).start, "PaymentActor")
+              Effect
+                .persist(PaymentStarted(paymentActor))
+                .thenRun(_ => orderManagerRef ! OrderManager.ConfirmPaymentStarted(paymentActor))
+            case ExpireCheckout | CancelCheckout => Effect.persist(CheckoutCancelled)
+            case _                               => Effect.none
+          }
 
-      case ProcessingPayment(_) =>
-        ???
+        case ProcessingPayment(_) =>
+          command match {
+            case ConfirmPaymentReceived =>
+              Effect
+                .persist(CheckOutClosed)
+                .thenRun(_ => cartActor ! TypedCartActor.ConfirmCheckoutClosed)
+            case ExpirePayment | CancelCheckout => Effect.persist(CheckoutCancelled)
+            case _                              => Effect.none
+          }
 
-      case Cancelled =>
-        ???
-
-      case Closed =>
-        ???
+        case Cancelled | Closed =>
+          command match {
+            case _ => Effect.none
+          }
+      }
     }
-  }
 
-  def eventHandler(context: ActorContext[Command]): (State, Event) => State = (state, event) => {
-    event match {
-      case CheckoutStarted           => ???
-      case DeliveryMethodSelected(_) => ???
-      case PaymentStarted(_)         => ???
-      case CheckOutClosed            => ???
-      case CheckoutCancelled         => ???
+  def eventHandler(context: ActorContext[Command]): (State, Event) => State =
+    (state, event) => {
+      def timer             = state.timerOpt.get
+      def stopTimer(): Unit = state.timerOpt.foreach(_.cancel)
+
+      event match {
+        case CheckoutStarted           => SelectingDelivery(schedule(context, ExpireCheckout))
+        case DeliveryMethodSelected(_) => SelectingPaymentMethod(timer)
+        case PaymentStarted(_) =>
+          stopTimer()
+          ProcessingPayment(schedule(context, ExpirePayment))
+        case CheckOutClosed =>
+          stopTimer()
+          Closed
+        case CheckoutCancelled =>
+          stopTimer()
+          Cancelled
+      }
     }
-  }
 }

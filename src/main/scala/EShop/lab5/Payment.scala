@@ -2,14 +2,12 @@ package EShop.lab5
 
 import EShop.lab2.TypedCheckout
 import EShop.lab3.OrderManager
-import EShop.lab5.Payment.{PaymentRejected, WrappedPaymentServiceResponse}
-import EShop.lab5.PaymentService.{PaymentClientError, PaymentServerError, PaymentSucceeded}
-import akka.actor.typed.{ActorRef, Behavior, ChildFailed, SupervisorStrategy}
+import EShop.lab3.OrderManager.ConfirmPaymentReceived
+import EShop.lab5.PaymentService.PaymentSucceeded
+import akka.actor.typed._
 import akka.actor.typed.scaladsl.Behaviors
-import akka.stream.StreamTcpException
 
 import scala.concurrent.duration._
-import akka.actor.typed.Terminated
 
 object Payment {
   sealed trait Message
@@ -27,18 +25,30 @@ object Payment {
     checkout: ActorRef[TypedCheckout.Command]
   ): Behavior[Message] =
     Behaviors
-      .receive[Message](
-        (context, msg) =>
-          msg match {
-            case DoPayment                                       => ???
-            case WrappedPaymentServiceResponse(PaymentSucceeded) => ???
+      .receive[Message]((context, msg) =>
+        msg match {
+          case DoPayment =>
+            val adapter = context.messageAdapter[PaymentService.Response] {
+              case response @ PaymentService.PaymentSucceeded => WrappedPaymentServiceResponse(response)
+            }
+            val paymentService    = Behaviors.supervise(PaymentService(method, adapter)).onFailure(restartStrategy)
+            val paymentServiceRef = context.spawnAnonymous(paymentService)
+            context.watch(paymentServiceRef)
+            Behaviors.same
+
+          case WrappedPaymentServiceResponse(PaymentSucceeded) =>
+            orderManager ! ConfirmPaymentReceived
+            Behaviors.same
+
         }
       )
       .receiveSignal {
-        case (context, Terminated(t)) => ???
+        case (_, Terminated(_)) =>
+          notifyAboutRejection(orderManager, checkout)
+          Behaviors.same
       }
 
-  // please use this one to notify when supervised actor was stoped
+  // please use this one to notify when supervised actor was stopped
   private def notifyAboutRejection(
     orderManager: ActorRef[OrderManager.Command],
     checkout: ActorRef[TypedCheckout.Command]

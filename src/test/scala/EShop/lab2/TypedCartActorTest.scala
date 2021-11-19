@@ -191,9 +191,9 @@ object TypedCartActorTest {
   val inCheckoutMsg = "inCheckout"
 
   def cartActorWithCartSizeResponseOnStateChange(
-    testKit: ActorTestKit,
-    probe: ActorRef[Any]
-  ): ActorRef[TypedCartActor.Command] =
+                                                  testKit: ActorTestKit,
+                                                  probe: ActorRef[Any]
+                                                ): ActorRef[TypedCartActor.Command] =
     testKit.spawn {
       val cartActor = new TypedCartActor {
         override val cartTimerDuration: FiniteDuration = 1.seconds
